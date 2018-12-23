@@ -1,0 +1,93 @@
+---
+title: "Predicting Barbell Lift Movement"
+author: "Gian Arjuna"
+date: "December 22, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##Synopsis
+The purpose of this study is to train an algorithm to predict wether a certain barbell lift movement is done correctly or not. The data used for predicting the movement is from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. From these dataset I train 2 prediction model using gradient boosting method and random forest with 10 fold cross-validation. The resulting model able to achieve an estimated out-of-sample accuracy of 99.3 % for gradient boosting method and 100% for random forest.
+
+##Load the library and data
+First lets load the library and data used in this study
+```{r, results = 'hide'}
+library(caret)
+library(gbm)
+library(randomForest)
+
+pmltrain <- read.csv("pml-training.csv", na.string = c("", "NA"))       
+pmltest <- read.csv("pml-testing.csv", na.string = c("", "NA"))
+```
+```{r, echo=FALSE,results='hide'}
+load(file="project.RData")
+```
+
+##Processing the data
+Next lets explore the training dataset a little bit by looking at its content
+```{r}
+str(pmltrain)
+dim(pmltrain)
+```
+As you can see the training dataset have 19622 observation with 160 variables. This data represent the participant's performance on lifting a dumbell. The variable 'classe' in the dataset captures the information of how well the participant have conducted the acitvity. A value of 'A' means well-performed exercise while the value 'B' to 'E' represent a certain errors. This variable is the one we are going to predict using the sensors data. 
+
+  However as you can see, the dataset contain a lot of missing values and coloumn that are not usable for predicting the classe, so lets first remove these variable from both the training and testing dataset. Here we also remove the 'X' sample number, user name data and the timestamp information.
+```{r} 
+traindata <- pmltrain[, colSums(is.na(pmltrain)) == 0]
+testdata <- pmltest[, colSums(is.na(pmltest)) == 0]
+
+traindata <- traindata[, -c(0:6)]
+testdata <- testdata[,-c(0:6)]
+
+dim(traindata)
+```
+We now have a training data set of 19622 observations of 54 variables.
+
+##Cross validation design and training the model
+Now that we have a clean data, next is to train the model using gradient boosting and random forest method. In order to limit the effect of overfitting we will also use 10 fold cross-validation. 
+
+```{r}
+set.seed(88)
+partition <- createDataPartition(traindata$classe, p=0.7, list=FALSE)
+trainset <- traindata[partition,]
+testset <- traindata[-partition,]
+train_control <- trainControl(method="cv", number=10)
+```
+
+###Gradient Boosting
+In gradient boosting, a prediction model uses a large set of weak predictor, weighted them and combine them togeter to get a stronger predictor As the the fitting number increase, the data that was misclasiffied by the previous trees got up-weighted so that the same mistake would not be repeated again. The effect of this process is reducing leftover trend in the residuals and less prone to overfitting than a single decision tree model
+
+```{r, eval = FALSE}
+model.gbm <- train(classe~., data=traindata, method="gbm", trControl=train_control, verbose=FALSE)
+```
+```{r}
+model.gbm
+predict.gbm <- predict(model.gbm,newdata=testset)
+confusionMatrix(testset$classe,predict.gbm)$overall[1]
+```
+As you can see, the out-of-sample rate for the gradient boosting method is around 0.07 %
+
+###Random Forest
+Random forest is the extension of bagging on classification or regression. The process happen by bootsraping samples from training data and growing trees for each of the training sample. The algorithm then average the outcome and vote for the final tree. it is one of the most accurate machine learning algorithm, however it can be slow and hard to interpret,
+```{r, eval = FALSE}
+model.rf <- train(classe ~ ., data=traindata, method="rf", trControl=train_control, importance = TRUE)
+```
+```{r}
+model.rf
+predict.rf <- predict(model.rf, newdata = testset)
+confusionMatrix(predict.rf, testset$classe)$overall[1]
+```
+We can see here that the model based on random forest algorithm have a slightly better the out-of-sample rate with around 0% for the sub-sampled test dataset.
+
+##Predicting the Test dataset
+Next we finally try to predict the Classe for the 20 data in test dataset. 
+```{r}
+result.gbm <- predict(model.gbm, newdata = testdata)
+result.gbm
+result.rf <- predict(model.rf, newdata = testdata)
+result.rf
+```
+Here both the gradient boosting and random forest correctly predict 20 out of 20 test case.
